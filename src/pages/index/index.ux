@@ -8,13 +8,14 @@
         <text class="head-time" style="color: {{t.ink}}">{{time}}</text>
       </div>
       <stack class="ring-box">
-        <progress class="arc" type="arc" percent="{{readinessShown}}" style="color: {{t.accent}}; background-color: {{t.track}}; stroke-width: 22px; start-angle: 225; total-angle: 270; center-x: 140px; center-y: 140px; radius: 118px"></progress>
+        <progress class="arc" type="arc" percent="{{readinessShown}}" style="color: {{t.accent}}; background-color: {{t.track}}; stroke-width: 20px; start-angle: 225; total-angle: 270; center-x: 130px; center-y: 130px; radius: 110px"></progress>
         <div class="ring-center">
           <text class="score" style="color: {{t.ink}}">{{readiness.score}}</text>
           <text class="unit" style="color: {{t.muted}}">of 100</text>
         </div>
       </stack>
       <text class="caption" style="color: {{t.ink}}">{{readiness.note}}</text>
+      <text class="disclaimer" style="color: {{t.muted}}">{{safety.short}}</text>
     </div>
 
     <!-- 2. Sleep -->
@@ -39,6 +40,7 @@
             <text class="legend-text" style="color: {{t.muted}}">REM {{sleep.rem}}</text>
           </div>
         </div>
+        <text class="sleep-consistency" style="color: {{t.muted}}">Schedule {{sleep.consistency}}</text>
       </div>
     </div>
 
@@ -67,7 +69,27 @@
       </div>
     </div>
 
-    <!-- 4. Activity -->
+    <!-- 4. Body: the two overnight readings that are not heart rate -->
+    <div class="screen" style="background-color: {{t.bg}}">
+      <div class="head">
+        <text class="head-label" style="color: {{t.accent}}">Body</text>
+        <text class="head-time" style="color: {{t.ink}}">{{time}}</text>
+      </div>
+      <div class="body-list">
+        <div class="body-row">
+          <text class="stat-label" style="color: {{t.muted}}">RESPIRATORY</text>
+          <text class="body-value" style="color: {{t.ink}}">{{body.respiratory}}</text>
+          <text class="body-note" style="color: {{t.muted}}">{{body.respiratoryNote}}</text>
+        </div>
+        <div class="body-row body-row-last">
+          <text class="stat-label" style="color: {{t.muted}}">SKIN TEMP</text>
+          <text class="body-value" style="color: {{t.ink}}">{{body.temperature}}</text>
+          <text class="body-note" style="color: {{t.muted}}">{{body.temperatureNote}}</text>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Activity -->
     <div class="screen" style="background-color: {{t.bg}}">
       <div class="head">
         <text class="head-label" style="color: {{t.accent}}">Activity</text>
@@ -83,15 +105,22 @@
       <text class="caption" style="color: {{t.ink}}">{{activity.active}} active today</text>
     </div>
 
-    <!-- 5. Coach nudge, with a breathing guide behind "Breathe" -->
+    <!-- 6. Multi-metric pattern, with a breathing guide behind "Breathe" -->
     <div class="screen" style="background-color: {{t.bg}}">
       <div class="head">
-        <text class="head-label" style="color: {{t.accent}}">Vitaliq</text>
+        <text class="head-label" style="color: {{t.accent}}">Pattern</text>
         <text class="head-time" style="color: {{t.ink}}">{{time}}</text>
       </div>
       <div class="nudge-body fade-in" if="{{!breathing}}">
-        <text class="kicker" style="color: {{t.accent}}">STRESS</text>
-        <text class="nudge-text" style="color: {{t.ink}}">{{stress.text}}</text>
+        <text class="kicker" style="color: {{t.accent}}">{{pattern.window}}</text>
+        <text class="nudge-text" style="color: {{t.ink}}">{{pattern.title}}</text>
+        <div class="change-list">
+          <div for="{{pattern.changes}}" class="change-row">
+            <text class="change-label" style="color: {{t.muted}}">{{$item.label}}</text>
+            <text class="change-value" style="color: {{t.accent}}">{{$item.change}}</text>
+          </div>
+          <text class="change-more" style="color: {{t.muted}}">{{pattern.more}}</text>
+        </div>
         <div class="actions">
           <div class="pill pill-main {{pressed === 'breathe' ? 'pressed' : ''}}" style="background-color: {{t.accent}}" ontouchstart="press('breathe')" ontouchend="release" ontouchcancel="release" onclick="startBreathing">
             <text class="pill-text" style="color: {{t.ink}}">Breathe</text>
@@ -100,6 +129,7 @@
             <text class="pill-text" style="color: {{t.ink}}">Later</text>
           </div>
         </div>
+        <text class="pattern-safety" style="color: {{t.muted}}">{{safety.long}}</text>
       </div>
       <div class="breath-body fade-in" if="{{breathing}}">
         <div class="breath-box">
@@ -127,7 +157,10 @@ import theme from '../../common/theme.js'
 import data from '../../common/data.js'
 
 const BREATH_SECONDS = 4
-const PAGE_COUNT = 5
+// Readiness, Sleep, Heart, Body, Activity, Pattern. Matches FACE_COUNT in the phone app.
+const PAGE_COUNT = 6
+const PAGE_ACTIVITY = 4
+const PAGE_PATTERN = 5
 const FRAME_MS = 20
 const RING_MS = 700
 const DOT_MS = 260
@@ -177,8 +210,10 @@ export default {
     readiness: data.readiness,
     sleep: data.sleep,
     heart: data.heart,
+    body: data.body,
     activity: data.activity,
-    stress: data.stress,
+    pattern: data.pattern,
+    safety: data.safety,
     sleepBars: data.sleep.bars.map(bar => ({
       h: Math.round(bar.h * 1.3),
       c: bar.k === 'deep' ? theme.accent : bar.k === 'rem' ? theme.sleepRem : theme.sleepLight
@@ -236,7 +271,7 @@ export default {
       this.tween('readiness', RING_MS, easeOut, p => {
         this.readinessShown = Math.round(target * p)
       })
-    } else if (index === 3) {
+    } else if (index === PAGE_ACTIVITY) {
       const target = this.stepsPercent
       this.tween('steps', RING_MS, easeOut, p => {
         this.stepsShown = Math.round(target * p)
@@ -278,7 +313,7 @@ export default {
 
   onPageChange(e) {
     this.setPage(e.index)
-    if (e.index !== 4 && this.breathing) {
+    if (e.index !== PAGE_PATTERN && this.breathing) {
       this.stopBreathing()
     }
   },
@@ -354,7 +389,7 @@ export default {
 .head {
   width: 480px;
   height: 36px;
-  margin-top: 48px;
+  margin-top: 40px;
   padding-left: 48px;
   padding-right: 48px;
   justify-content: space-between;
@@ -372,9 +407,9 @@ export default {
 }
 
 .ring-box {
-  width: 280px;
-  height: 280px;
-  margin-top: 4px;
+  width: 260px;
+  height: 260px;
+  margin-top: 2px;
 }
 
 .ring-box-small {
@@ -384,8 +419,8 @@ export default {
 }
 
 .arc {
-  width: 280px;
-  height: 280px;
+  width: 260px;
+  height: 260px;
 }
 
 .arc-small {
@@ -394,8 +429,8 @@ export default {
 }
 
 .ring-center {
-  width: 280px;
-  height: 280px;
+  width: 260px;
+  height: 260px;
   flex-direction: column;
   justify-content: center;
   align-items: center;
@@ -410,7 +445,7 @@ export default {
 }
 
 .score {
-  font-size: 108px;
+  font-size: 100px;
   font-weight: bold;
 }
 
@@ -434,10 +469,19 @@ export default {
 
 .caption {
   width: 340px;
-  margin-top: 8px;
+  margin-top: 6px;
   font-size: 24px;
   text-align: center;
   lines: 2;
+}
+
+/* The boundary line, under any screen that reads something into the numbers. */
+.disclaimer {
+  width: 340px;
+  margin-top: 4px;
+  font-size: 18px;
+  text-align: center;
+  lines: 1;
 }
 
 .dots {
@@ -464,7 +508,7 @@ export default {
 
 .sleep-body {
   width: 480px;
-  margin-top: 40px;
+  margin-top: 28px;
   padding-left: 52px;
   padding-right: 52px;
   flex-direction: column;
@@ -483,7 +527,7 @@ export default {
 .bars {
   width: 376px;
   height: 82px;
-  margin-top: 34px;
+  margin-top: 26px;
   align-items: flex-end;
 }
 
@@ -512,6 +556,41 @@ export default {
 .legend-text {
   font-size: 20px;
   font-weight: bold;
+}
+
+.sleep-consistency {
+  margin-top: 10px;
+  font-size: 20px;
+  font-weight: bold;
+}
+
+/* Body: respiratory rate and skin temperature, stacked so each gets its own note. */
+.body-list {
+  width: 480px;
+  margin-top: 48px;
+  padding-left: 72px;
+  padding-right: 72px;
+  flex-direction: column;
+}
+
+.body-row {
+  flex-direction: column;
+  margin-bottom: 40px;
+}
+
+.body-row-last {
+  margin-bottom: 0px;
+}
+
+.body-value {
+  margin-top: 4px;
+  font-size: 56px;
+  font-weight: bold;
+}
+
+.body-note {
+  margin-top: 2px;
+  font-size: 20px;
 }
 
 .heart-body {
@@ -560,7 +639,7 @@ export default {
 
 .nudge-body {
   width: 480px;
-  margin-top: 84px;
+  margin-top: 16px;
   padding-left: 48px;
   padding-right: 48px;
   flex-direction: column;
@@ -572,14 +651,49 @@ export default {
 }
 
 .nudge-text {
-  margin-top: 10px;
-  font-size: 32px;
+  margin-top: 6px;
+  font-size: 26px;
   font-weight: bold;
-  lines: 3;
+  lines: 2;
+}
+
+/* The readings that moved together. Three fit on the wrist; the app has the rest. */
+.change-list {
+  width: 384px;
+  margin-top: 12px;
+  flex-direction: column;
+}
+
+.change-row {
+  width: 384px;
+  margin-bottom: 4px;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.change-label {
+  font-size: 20px;
+}
+
+.change-value {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.change-more {
+  margin-top: 2px;
+  font-size: 16px;
 }
 
 .actions {
-  margin-top: 34px;
+  margin-top: 12px;
+}
+
+.pattern-safety {
+  width: 384px;
+  margin-top: 8px;
+  font-size: 16px;
+  lines: 2;
 }
 
 .pressed {
@@ -587,8 +701,8 @@ export default {
 }
 
 .pill {
-  height: 60px;
-  border-radius: 30px;
+  height: 56px;
+  border-radius: 28px;
   justify-content: center;
   align-items: center;
 }
@@ -608,7 +722,7 @@ export default {
 }
 
 .pill-text {
-  font-size: 26px;
+  font-size: 24px;
   font-weight: bold;
 }
 
