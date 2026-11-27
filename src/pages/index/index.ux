@@ -1,6 +1,6 @@
 <template>
   <div class="root" style="background-color: {{t.bg}}">
-  <swiper class="pager" index="{{current}}" indicator="false" onchange="onPageChange">
+  <swiper class="pager" index="{{current}}" indicator="false" duration="320" onchange="onPageChange">
     <!-- 1. Readiness -->
     <div class="screen" style="background-color: {{t.bg}}">
       <div class="head">
@@ -8,7 +8,7 @@
         <text class="head-time" style="color: {{t.ink}}">{{time}}</text>
       </div>
       <stack class="ring-box">
-        <progress class="arc" type="arc" percent="{{readiness.score}}" style="color: {{t.accent}}; background-color: {{t.track}}; stroke-width: 22px; start-angle: 225; total-angle: 270; center-x: 140px; center-y: 140px; radius: 118px"></progress>
+        <progress class="arc" type="arc" percent="{{readinessShown}}" style="color: {{t.accent}}; background-color: {{t.track}}; stroke-width: 22px; start-angle: 225; total-angle: 270; center-x: 140px; center-y: 140px; radius: 118px"></progress>
         <div class="ring-center">
           <text class="score" style="color: {{t.ink}}">{{readiness.score}}</text>
           <text class="unit" style="color: {{t.muted}}">of 100</text>
@@ -74,7 +74,7 @@
         <text class="head-time" style="color: {{t.ink}}">{{time}}</text>
       </div>
       <stack class="ring-box-small">
-        <progress class="arc-small" type="arc" percent="{{stepsPercent}}" style="color: {{t.ink}}; background-color: {{t.track}}; stroke-width: 14px; start-angle: 0; total-angle: 360; center-x: 115px; center-y: 115px; radius: 108px"></progress>
+        <progress class="arc-small" type="arc" percent="{{stepsShown}}" style="color: {{t.ink}}; background-color: {{t.track}}; stroke-width: 14px; start-angle: 0; total-angle: 360; center-x: 115px; center-y: 115px; radius: 108px"></progress>
         <div class="ring-center-small">
           <text class="steps-small" style="color: {{t.ink}}">{{stepsLabel}}</text>
           <text class="unit-small" style="color: {{t.muted}}">of {{goalLabel}} steps</text>
@@ -89,24 +89,26 @@
         <text class="head-label" style="color: {{t.accent}}">Vitaliq</text>
         <text class="head-time" style="color: {{t.ink}}">{{time}}</text>
       </div>
-      <div class="nudge-body" if="{{!breathing}}">
+      <div class="nudge-body fade-in" if="{{!breathing}}">
         <text class="kicker" style="color: {{t.accent}}">STRESS</text>
         <text class="nudge-text" style="color: {{t.ink}}">{{stress.text}}</text>
         <div class="actions">
-          <div class="pill pill-main" style="background-color: {{t.accent}}" onclick="startBreathing">
+          <div class="pill pill-main {{pressed === 'breathe' ? 'pressed' : ''}}" style="background-color: {{t.accent}}" ontouchstart="press('breathe')" ontouchend="release" ontouchcancel="release" onclick="startBreathing">
             <text class="pill-text" style="color: {{t.ink}}">Breathe</text>
           </div>
-          <div class="pill pill-alt" style="background-color: {{t.chip}}" onclick="dismissNudge">
+          <div class="pill pill-alt {{pressed === 'later' ? 'pressed' : ''}}" style="background-color: {{t.chip}}" ontouchstart="press('later')" ontouchend="release" ontouchcancel="release" onclick="dismissNudge">
             <text class="pill-text" style="color: {{t.ink}}">Later</text>
           </div>
         </div>
       </div>
-      <div class="breath-body" if="{{breathing}}">
-        <div class="breath-ring" style="border-color: {{t.accent}}">
+      <div class="breath-body fade-in" if="{{breathing}}">
+        <div class="breath-box">
+        <div class="breath-ring" style="border-color: {{t.accent}}; width: {{breathSize}}px; height: {{breathSize}}px; border-radius: {{breathRadius}}px">
           <text class="steps" style="color: {{t.ink}}">{{breathCount}}</text>
         </div>
+        </div>
         <text class="caption" style="color: {{t.ink}}">{{breathLabel}}</text>
-        <div class="pill pill-alt pill-done" style="background-color: {{t.chip}}" onclick="stopBreathing">
+        <div class="pill pill-alt pill-done {{pressed === 'done' ? 'pressed' : ''}}" style="background-color: {{t.chip}}" ontouchstart="press('done')" ontouchend="release" ontouchcancel="release" onclick="finishBreathing">
           <text class="pill-text" style="color: {{t.ink}}">Done</text>
         </div>
       </div>
@@ -126,11 +128,30 @@ import data from '../../common/data.js'
 
 const BREATH_SECONDS = 4
 const PAGE_COUNT = 5
+const FRAME_MS = 20
+const RING_MS = 700
+const DOT_MS = 260
+const DOT_SMALL = 8
+const DOT_WIDE = 24
+const BREATH_SMALL = 100
+const BREATH_LARGE = 180
 
-function buildDots(active) {
+const easeOut = t => 1 - Math.pow(1 - t, 3)
+const easeInOut = t => -(Math.cos(Math.PI * t) - 1) / 2
+
+// p runs 0 -> 1 while the wide dot moves from `from` to `to`.
+function buildDots(to, from, p) {
+  const grow = DOT_SMALL + (DOT_WIDE - DOT_SMALL) * p
+  const shrink = DOT_WIDE - (DOT_WIDE - DOT_SMALL) * p
   const dots = []
   for (let i = 0; i < PAGE_COUNT; i++) {
-    dots.push(i === active ? { w: 24, c: theme.ink } : { w: 8, c: theme.sleepLight })
+    if (i === to) {
+      dots.push({ w: Math.round(grow), c: theme.ink })
+    } else if (i === from) {
+      dots.push({ w: Math.round(shrink), c: p < 0.5 ? theme.ink : theme.sleepLight })
+    } else {
+      dots.push({ w: DOT_SMALL, c: theme.sleepLight })
+    }
   }
   return dots
 }
@@ -147,7 +168,7 @@ export default {
   private: {
     t: theme,
     current: 0,
-    dots: buildDots(0),
+    dots: buildDots(0, -1, 1),
     time: '--:--',
     breathing: false,
     breathPhase: 'in',
@@ -171,18 +192,70 @@ export default {
       { strokeColor: theme.accent, fillColor: theme.bg, data: data.heart.trace, gradient: false }
     ],
     stepsPercent: Math.round((data.activity.steps / data.activity.goal) * 100),
+    readinessShown: 0,
+    pressed: '',
+    breathSize: BREATH_SMALL,
+    breathRadius: BREATH_SMALL / 2,
+    stepsShown: 0,
     stepsLabel: groupDigits(data.activity.steps),
     goalLabel: groupDigits(data.activity.goal)
   },
 
   onInit() {
+    this.tweens = {}
     this.updateClock()
     this.clockTimer = setInterval(() => this.updateClock(), 1000)
+    this.fillRing(0)
   },
 
   onDestroy() {
     clearInterval(this.clockTimer)
     clearInterval(this.breathTimer)
+    Object.keys(this.tweens).forEach(key => clearInterval(this.tweens[key]))
+  },
+
+  // Runs onFrame(eased progress) every frame for `ms`. Vela ignores CSS
+  // transitions, so motion is driven from here.
+  tween(key, ms, ease, onFrame) {
+    clearInterval(this.tweens[key])
+    const start = Date.now()
+    onFrame(0)
+    this.tweens[key] = setInterval(() => {
+      const t = Math.min(1, (Date.now() - start) / ms)
+      onFrame(ease(t))
+      if (t === 1) {
+        clearInterval(this.tweens[key])
+      }
+    }, FRAME_MS)
+  },
+
+  // Fill a ring from 0 to its value each time its page shows.
+  fillRing(index) {
+    if (index === 0) {
+      const target = this.readiness.score
+      this.tween('readiness', RING_MS, easeOut, p => {
+        this.readinessShown = Math.round(target * p)
+      })
+    } else if (index === 3) {
+      const target = this.stepsPercent
+      this.tween('steps', RING_MS, easeOut, p => {
+        this.stepsShown = Math.round(target * p)
+      })
+    }
+  },
+
+  moveDots(to, from) {
+    this.tween('dots', DOT_MS, easeOut, p => {
+      this.dots = buildDots(to, from, p)
+    })
+  },
+
+  sizeBreath(from, to) {
+    this.tween('breath', BREATH_SECONDS * 1000, easeInOut, p => {
+      const size = Math.round(from + (to - from) * p)
+      this.breathSize = size
+      this.breathRadius = size / 2
+    })
   },
 
   updateClock() {
@@ -194,8 +267,13 @@ export default {
   },
 
   setPage(index) {
+    if (index === this.current) {
+      return
+    }
+    const from = this.current
     this.current = index
-    this.dots = buildDots(index)
+    this.moveDots(index, from)
+    this.fillRing(index)
   },
 
   onPageChange(e) {
@@ -203,6 +281,14 @@ export default {
     if (e.index !== 4 && this.breathing) {
       this.stopBreathing()
     }
+  },
+
+  press(name) {
+    this.pressed = name
+  },
+
+  release() {
+    this.pressed = ''
   },
 
   dismissNudge() {
@@ -215,6 +301,7 @@ export default {
     this.breathCount = BREATH_SECONDS
     this.breathLabel = 'Breathe in'
     clearInterval(this.breathTimer)
+    this.sizeBreath(BREATH_SMALL, BREATH_LARGE)
     this.breathTimer = setInterval(() => this.tickBreath(), 1000)
   },
 
@@ -225,12 +312,22 @@ export default {
     }
     this.breathPhase = this.breathPhase === 'in' ? 'out' : 'in'
     this.breathLabel = this.breathPhase === 'in' ? 'Breathe in' : 'Breathe out'
+    if (this.breathPhase === 'in') {
+      this.sizeBreath(BREATH_SMALL, BREATH_LARGE)
+    } else {
+      this.sizeBreath(BREATH_LARGE, BREATH_SMALL)
+    }
     this.breathCount = BREATH_SECONDS
   },
 
   stopBreathing() {
     clearInterval(this.breathTimer)
+    clearInterval(this.tweens.breath)
     this.breathing = false
+  },
+
+  finishBreathing() {
+    this.stopBreathing()
     this.setPage(0)
   }
 }
@@ -485,6 +582,10 @@ export default {
   margin-top: 34px;
 }
 
+.pressed {
+  transform: scale(0.94);
+}
+
 .pill {
   height: 60px;
   border-radius: 30px;
@@ -518,11 +619,31 @@ export default {
   align-items: center;
 }
 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.fade-in {
+  animation-name: fadeIn;
+  animation-duration: 220ms;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
+
+.breath-box {
+  width: 180px;
+  height: 180px;
+  justify-content: center;
+  align-items: center;
+}
+
 .breath-ring {
-  width: 170px;
-  height: 170px;
   border-width: 6px;
-  border-radius: 85px;
   justify-content: center;
   align-items: center;
 }
